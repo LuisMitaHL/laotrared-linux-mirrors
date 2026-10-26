@@ -1,0 +1,13 @@
+# the package cache itself: rebuildable, and never small
+cache/
+
+# scratch space used while testing (source clones, nginx harnesses, scan reports)
+.scratch/
+
+# python leftovers from running the tools
+__pycache__/
+*.pyc
+
+# editor and OS noise
+.DS_Store
+*.swp

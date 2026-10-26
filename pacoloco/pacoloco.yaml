@@ -1,0 +1,29 @@
+# Optional: pacoloco instead of nginx for Arch only.
+# Compose has this service commented out; enable it if you want pacoloco's
+# prefetch/purge model rather than nginx's TTL + LRU model.
+#
+# Client side, with this file:
+#   Server = http://pacoloco:9129/repo/archlinux/$repo/os/$arch
+# Never list pacoloco in the mirrorlist it reads (infinite loop).
+
+port: 9129
+cache_dir: /var/cache/pacoloco
+
+# 30 days, same intent as nginx's inactive= in site-confs/default.conf.
+purge_files_after: 2592000
+
+repos:
+  archlinux:
+    # Tried in order; a 404 means "this mirror has not synced it yet" and the
+    # next URL is used. Path root must be /archlinux on every entry.
+    urls:
+      - http://mirror.rackspace.com/archlinux
+      - http://mirror.leaseweb.net/archlinux
+      - http://ftp.halifax.rwth-aachen.de/archlinux
+
+# Optional: keep a few hot packages warm. Cron has 7 fields
+# (sec min hour day-of-month month day-of-week year).
+# prefetch:
+#   cron: 0 15 3 * * * *
+#   ttl_unaccessed_in_days: 30
+#   ttl_unupdated_in_days: 200

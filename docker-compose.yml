@@ -1,0 +1,67 @@
+services:
+  cache:
+    # linuxserver's nginx (Alpine 3.24, nginx 1.30.x, s6-overlay v3).
+    # Everything it persists lives under /config; the cache is mounted outside
+    # that tree so a config backup never drags 50 GB of packages with it.
+    image: lscr.io/linuxserver/nginx:latest
+    container_name: pkgcache
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    # Public resolvers for the container itself. The LAN resolver exists to
+    # redirect mirror names to this cache; if the container inherited it, DNS
+    # would point nginx at itself (see nginx/resolver.conf). Kept in sync
+    # with that file on purpose - both paths must avoid the LAN resolver.
+    dns:
+      - 1.1.1.1
+      - 9.9.9.9
+    environment:
+      # abc (the user nginx workers run as) is remapped to this uid/gid, so the
+      # host bind mounts below only need to be writable by your own user.
+      PUID: 1000
+      PGID: 1000
+      TZ: America/La_Paz
+    volumes:
+      # Replaces the image's welcome-page vhost. linuxserver's init only copies
+      # default.conf.sample when the file is absent, so this one wins and there
+      # is exactly one default_server on :80.
+      - ./nginx/site-confs/default.conf:/config/nginx/site-confs/default.conf
+      - ./nginx/snippets:/config/nginx/snippets
+      # The image writes its own resolver.conf from /etc/resolv.conf (no
+      # ipv6=off, which breaks `resolve` on a v4-only network); override it.
+      - ./nginx/resolver.conf:/config/nginx/resolver.conf
+      # Generated upstream pools. tools/scan-mirrors.py rewrites this file on
+      # the host; `nginx -s reload` picks it up without recreating the
+      # container, which is why it is mounted as a file, not a directory.
+      - ./nginx/mirrors.conf:/config/nginx/mirrors.conf
+      # Cache lives outside /config: plain `du`/`rm` on the host, no docker exec.
+      - ./cache:/cache
+    healthcheck:
+      # Any path that reaches a real mirror proves upstream + DNS work; a
+      # plain "nginx is up" check would pass with every mirror unreachable.
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null",
+             "http://127.0.0.1/debian/dists/stable/Release"]
+      interval: 60s
+      timeout: 30s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # --- alternative: pacoloco for Arch only (native mirrorlist failover) ----
+  # nginx already fails over on 404 inside the arch_mirrors group; keep this
+  # out unless you want pacoloco's prefetch/purge policy instead.
+  #
+  # pacoloco:
+  #   image: ghcr.io/anatol/pacoloco:latest
+  #   container_name: pacoloco
+  #   restart: unless-stopped
+  #   ports:
+  #     - "9129:9129"
+  #   volumes:
+  #     - ./pacoloco/pacoloco.yaml:/etc/pacoloco.yaml:ro
+  #     - ./cache/pacoloco:/var/cache/pacoloco
+  #   # image runs as uid/gid 65532; chown the cache dir to match
